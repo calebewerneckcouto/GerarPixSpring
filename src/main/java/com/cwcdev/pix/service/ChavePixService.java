@@ -85,16 +85,28 @@ public class ChavePixService {
                     throw new RuntimeException("Telefone inválido");
                 break;
             case "ALEATORIO":
+                String cpf = chavePix.getCliente().getPessoa().getCpf();
+
+                // Verifica se já existe uma chave ALEATORIO com valor não nulo para este CPF
+                if (chavePixRepository.existsAleatorioByCpf(cpf)) {
+                    throw new RuntimeException("Cliente com este CPF já possui uma chave ALEATORIO");
+                }
+
+                // Gera UUID único global
+                String novoValor;
                 do {
-                    valor = UUID.randomUUID().toString();
-                } while (chavePixRepository.existsByValor(valor));
-                chavePix.setValor(valor);
+                    novoValor = UUID.randomUUID().toString();
+                } while (chavePixRepository.existsByValor(novoValor));
+
+                chavePix.setValor(novoValor);
                 return;
+
+
             default:
                 throw new RuntimeException("Tipo de chave inválido");
         }
 
-        // Verifica duplicidade por cliente
+        // Verifica duplicidade global
         if (chavePixRepository.existsByValor(valor))
             throw new RuntimeException("Chave já existe");
     }

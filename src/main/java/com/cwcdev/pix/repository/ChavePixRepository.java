@@ -26,6 +26,12 @@ public interface ChavePixRepository extends JpaRepository<ChavePix, Long> {
     
     Page<ChavePix> findAll(Pageable pageable);
 
+   
+
+    @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END " +
+    	       "FROM ChavePix c WHERE c.tipo = 'ALEATORIO' AND c.cliente.pessoa.cpf = :cpf AND c.valor IS NOT NULL")
+    	boolean existsAleatorioByCpf(@Param("cpf") String cpf);
+
     
    
 }
