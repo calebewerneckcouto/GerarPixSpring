@@ -5,11 +5,16 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.cwcdev.pix.exception.ResourceNotFoundException;
 import com.cwcdev.pix.model.ChavePix;
+import com.cwcdev.pix.model.Cliente;
 import com.cwcdev.pix.repository.ChavePixRepository;
 import com.cwcdev.pix.repository.ClienteRepository;
 
@@ -17,97 +22,117 @@ import com.cwcdev.pix.repository.ClienteRepository;
 public class ChavePixService {
 
     @Autowired
-    private ChavePixRepository chavePixRepository;
+    private ChavePixRepository repo;
 
     @Autowired
     private ClienteRepository clienteRepository;
 
-    public ChavePix salvar(ChavePix chavePix) {
-        if (chavePix.getCliente() != null && chavePix.getCliente().getId() == null) {
-            clienteRepository.save(chavePix.getCliente());
+    private static final Pattern EMAIL = Pattern.compile("^[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}$");
+    private static final Pattern CPF = Pattern.compile("\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}");
+    private static final Pattern CNPJ = Pattern.compile("\\d{2}\\.\\d{3}\\.\\d{3}/\\d{4}-\\d{2}");
+    private static final Pattern TELEFONE = Pattern.compile("^\\+?[0-9]{10,13}$");
+
+    @Transactional
+    public ChavePix criar(ChavePix chavePix, Long clienteId) {
+        // associa cliente
+        Cliente cliente = null;
+        if (clienteId != null) {
+            cliente = clienteRepository.findById(clienteId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado para associar chave"));
+        } else if (chavePix.getCliente() != null && chavePix.getCliente().getId() != null) {
+            cliente = clienteRepository.findById(chavePix.getCliente().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado para associar chave"));
+        } else {
+            throw new IllegalArgumentException("É necessário informar clienteId ou um cliente existente na chave");
         }
-        chavePix.setId(null); // Insert
 
-        validarChave(chavePix);
+        chavePix.setCliente(cliente);
+        chavePix.setId(null); // garante insert
 
-        return chavePixRepository.save(chavePix);
+        validarEPreparar(chavePix);
+
+        return repo.save(chavePix);
+    }
+    
+    
+    public List<ChavePix> listarTodas() {
+        return repo.findAll();
     }
 
+
+
+    @Transactional
     public ChavePix atualizar(Long id, ChavePix dados) {
-        ChavePix existente = buscarPorId(id);
+        ChavePix existente = repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Chave Pix não encontrada"));
         existente.setTipo(dados.getTipo());
         existente.setValor(dados.getValor());
-        validarChave(existente);
-        return chavePixRepository.save(existente);
-    }
-
-    public void remover(Long id) {
-        ChavePix existente = buscarPorId(id);
-        chavePixRepository.delete(existente);
+        if (dados.getCliente() != null && dados.getCliente().getId() != null) {
+            Cliente c = clienteRepository.findById(dados.getCliente().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado"));
+            existente.setCliente(c);
+        }
+        validarEPreparar(existente);
+        return repo.save(existente);
     }
 
     public ChavePix buscarPorId(Long id) {
-        return chavePixRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Chave Pix não encontrada"));
+        return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Chave Pix não encontrada"));
     }
 
-    public List<ChavePix> listarTodos() {
-        return chavePixRepository.findAll();
+    @Transactional
+    public void remover(Long id) {
+        ChavePix existente = buscarPorId(id);
+        repo.delete(existente);
     }
 
-    public Page<ChavePix> buscarPaginado(int pagina, int tamanho, String ordenarPor) {
+    public Page<ChavePix> listarPaginado(int pagina, int tamanho, String ordenarPor) {
         Pageable pageable = PageRequest.of(pagina, tamanho, Sort.by(Sort.Direction.ASC, ordenarPor));
-        return chavePixRepository.findAll(pageable);
+        return repo.findAll(pageable);
     }
 
+    // Valida tipo, formata/gera valor e checa duplicidade
+    private void validarEPreparar(ChavePix chavePix) {
+        if (chavePix.getTipo() == null) throw new IllegalArgumentException("Tipo de chave é obrigatório");
 
-    private void validarChave(ChavePix chavePix) {
-        if (chavePix.getTipo() == null) throw new RuntimeException("Tipo de chave é obrigatório");
-
-        String tipo = chavePix.getTipo().toUpperCase();
+        String tipo = chavePix.getTipo().trim().toUpperCase();
         String valor = chavePix.getValor();
-
         switch (tipo) {
             case "EMAIL":
-                if (!Pattern.compile("^[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}$").matcher(valor).matches())
-                    throw new RuntimeException("Email inválido");
+                if (valor == null || !EMAIL.matcher(valor).matches()) throw new IllegalArgumentException("Email inválido");
                 break;
             case "CPF":
-                if (!Pattern.compile("\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}").matcher(valor).matches())
-                    throw new RuntimeException("CPF inválido");
+                if (valor == null || !CPF.matcher(valor).matches()) throw new IllegalArgumentException("CPF inválido. Use formato xxx.xxx.xxx-xx");
                 break;
             case "CNPJ":
-                if (!Pattern.compile("\\d{2}\\.\\d{3}\\.\\d{3}/\\d{4}-\\d{2}").matcher(valor).matches())
-                    throw new RuntimeException("CNPJ inválido");
+                if (valor == null || !CNPJ.matcher(valor).matches()) throw new IllegalArgumentException("CNPJ inválido. Use formato xx.xxx.xxx/xxxx-xx");
                 break;
             case "TELEFONE":
-                if (!Pattern.compile("^\\+?[0-9]{10,13}$").matcher(valor).matches())
-                    throw new RuntimeException("Telefone inválido");
+                if (valor == null || !TELEFONE.matcher(valor).matches()) throw new IllegalArgumentException("Telefone inválido");
                 break;
             case "ALEATORIO":
-                String cpf = chavePix.getCliente().getPessoa().getCpf();
-
-                // Verifica se já existe uma chave ALEATORIO com valor não nulo para este CPF
-                if (chavePixRepository.existsAleatorioByCpf(cpf)) {
-                    throw new RuntimeException("Cliente com este CPF já possui uma chave ALEATORIO");
+                // Cliente precisa ter CPF (ou pode ter CNPJ, mas regra previa usa CPF)
+                String cpf = chavePix.getCliente() != null && chavePix.getCliente().getPessoa() != null
+                        ? chavePix.getCliente().getPessoa().getCpf()
+                        : null;
+                if (cpf == null || cpf.isBlank()) {
+                    throw new IllegalArgumentException("Para chave ALEATORIO é necessário CPF do cliente");
                 }
-
-                // Gera UUID único global
-                String novoValor;
+                if (repo.existsAleatorioByCpf(cpf)) {
+                    throw new IllegalArgumentException("Cliente com este CPF já possui uma chave ALEATORIO");
+                }
+                // gera UUID único
+                String novo;
                 do {
-                    novoValor = UUID.randomUUID().toString();
-                } while (chavePixRepository.existsByValor(novoValor));
-
-                chavePix.setValor(novoValor);
-                return;
-
-
+                    novo = UUID.randomUUID().toString();
+                } while (repo.existsByValor(novo));
+                chavePix.setValor(novo);
+                return; // não precisa checar duplicidade no final (gerado único)
             default:
-                throw new RuntimeException("Tipo de chave inválido");
+                throw new IllegalArgumentException("Tipo de chave inválido");
         }
 
-        // Verifica duplicidade global
-        if (chavePixRepository.existsByValor(valor))
-            throw new RuntimeException("Chave já existe");
+        // verificar duplicidade global (para todos os tipos exceto ALEATORIO)
+        if (valor == null || valor.isBlank()) throw new IllegalArgumentException("Valor da chave é obrigatório");
+        if (repo.existsByValor(valor)) throw new IllegalArgumentException("Chave já existe");
     }
 }
