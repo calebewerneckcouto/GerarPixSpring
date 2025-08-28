@@ -4,11 +4,14 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.cwcdev.pix.exception.ResourceNotFoundException;
+import com.cwcdev.pix.model.ChavePix;
 import com.cwcdev.pix.model.Cliente;
 import com.cwcdev.pix.model.Pessoa;
 import com.cwcdev.pix.repository.ClienteRepository;
@@ -32,8 +35,9 @@ public class ClienteService {
         return clienteRepository.save(cliente);
     }
 
-    public Page<Cliente> listarPaginado(Pageable pageable) {
-        return clienteRepository.findAll(pageable);
+    public Page<Cliente> listarPaginado(int page, int size, String sortBy) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy));
+        return clienteRepository.findAllNative(pageable);
     }
 
     public List<Cliente> listarTodos() {

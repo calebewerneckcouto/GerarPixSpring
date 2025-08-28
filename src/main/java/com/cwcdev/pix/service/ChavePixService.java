@@ -85,9 +85,9 @@ public class ChavePixService {
         repo.delete(existente);
     }
 
-    public Page<ChavePix> listarPaginado(int pagina, int tamanho, String ordenarPor) {
-        Pageable pageable = PageRequest.of(pagina, tamanho, Sort.by(Sort.Direction.ASC, ordenarPor));
-        return repo.findAll(pageable);
+    public Page<ChavePix> listarPaginado(int page, int size, String sortBy) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy));
+        return repo.findAllNative(pageable);
     }
 
     // Valida tipo, formata/gera valor e checa duplicidade

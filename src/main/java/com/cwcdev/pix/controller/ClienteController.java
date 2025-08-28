@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cwcdev.pix.dto.ClienteDTO;
+import com.cwcdev.pix.model.ChavePix;
 import com.cwcdev.pix.model.Cliente;
 import com.cwcdev.pix.model.Pessoa;
 import com.cwcdev.pix.service.ClienteService;
@@ -57,21 +58,16 @@ public class ClienteController {
     }
 
 
-    @Operation(summary = "Listar todos clientes (paginado)")
+    @Operation(summary = "Listar Clientes (paginado)")
     @GetMapping
-    public ResponseEntity<Page<Cliente>> listarPaginado(
+    public ResponseEntity<Page<Cliente>> listar(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "id") String sortBy) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy));
-        return ResponseEntity.ok(clienteService.listarPaginado(pageable));
+        return ResponseEntity.ok(clienteService.listarPaginado(page, size, sortBy));
     }
 
-    @Operation(summary = "Listar todos (sem paginação)")
-    @GetMapping("/all/v2")
-    public ResponseEntity<java.util.List<Cliente>> listarTodos() {
-        return ResponseEntity.ok(clienteService.listarTodos());
-    }
+    
 
     @Operation(summary = "Buscar cliente por id")
     @GetMapping("/{id}")
