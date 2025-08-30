@@ -22,71 +22,108 @@ import com.cwcdev.pix.dto.UserInsertDTO;
 import com.cwcdev.pix.dto.UserUpdateDTO;
 import com.cwcdev.pix.service.UserService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 
-/*Complementa Controlador REST*/
-
+/**
+ * Controlador REST para gerenciar usuários.
+ * Inclui operações de listagem, busca, criação, atualização e exclusão.
+ * Autorização via Bearer Token (JWT).
+ */
 @RestController
-@RequestMapping(value = "/users")
+@RequestMapping("/users")
+@SecurityRequirement(name = "bearerAuth") // Faz o Swagger exibir o campo de token
 public class UserResource {
 
-	@Autowired
-	private UserService service;
+    @Autowired
+    private UserService service;
 
-	@PreAuthorize("hasAnyRole('ROLE_ADMIN')")
-	@GetMapping
-	public ResponseEntity<Page<UserDTO>> findAll(Pageable pageable) {
+    @Operation(
+            summary = "Listar usuários (paginado)",
+            description = "Retorna uma página de usuários. Necessário ROLE_ADMIN",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping
+    public ResponseEntity<Page<UserDTO>> findAll(
+            @Parameter(description = "Parâmetros de paginação") Pageable pageable) {
+        Page<UserDTO> list = service.findAllPaged(pageable);
+        return ResponseEntity.ok(list);
+    }
 
-		Page<UserDTO> list = service.findAllPaged(pageable);
+    @Operation(
+            summary = "Buscar dados do usuário logado",
+            description = "Retorna informações do usuário autenticado",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @PreAuthorize("hasAnyRole('ADMIN','USER')")
+    @GetMapping("/me")
+    public ResponseEntity<UserDTO> findMe() {
+        UserDTO dto = service.findMe();
+        return ResponseEntity.ok(dto);
+    }
 
-		return ResponseEntity.ok().body(list);
-	}
-	
-	
-	
-	@PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_OPERATOR')")
-	@GetMapping(value = "/me")
-	public ResponseEntity<UserDTO> findMe() {
+    @Operation(
+            summary = "Buscar usuário por ID",
+            description = "Retorna informações de um usuário específico pelo ID",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/{id}")
+    public ResponseEntity<UserDTO> findById(
+            @Parameter(description = "ID do usuário") @PathVariable Long id) {
+        UserDTO dto = service.findById(id);
+        return ResponseEntity.ok(dto);
+    }
 
-		UserDTO dto = service.findMe();
+    @Operation(
+            summary = "Criar usuário",
+            description = "Cria um novo usuário e retorna os dados inseridos",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping
+    public ResponseEntity<UserDTO> insert(
+            @Parameter(description = "Dados do usuário para inserção") 
+            @Valid @RequestBody UserInsertDTO dto) {
 
-		return ResponseEntity.ok().body(dto);
-	}
+        UserDTO newDto = service.insert(dto);
+        URI uri = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(newDto.getId())
+                .toUri();
+        return ResponseEntity.created(uri).body(newDto);
+    }
 
-	
+    @Operation(
+            summary = "Atualizar usuário",
+            description = "Atualiza os dados de um usuário existente",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/{id}")
+    public ResponseEntity<UserDTO> update(
+            @Parameter(description = "ID do usuário") @PathVariable Long id,
+            @Parameter(description = "Dados para atualização do usuário") 
+            @Valid @RequestBody UserUpdateDTO dto) {
 
-	
-	
+        UserDTO updatedDto = service.update(id, dto);
+        return ResponseEntity.ok(updatedDto);
+    }
 
-	@PreAuthorize("hasAnyRole('ROLE_ADMIN')")
-	@GetMapping(value = "{id}")
-	public ResponseEntity<UserDTO> findById(@PathVariable Long id) {
+    @Operation(
+            summary = "Excluir usuário",
+            description = "Exclui um usuário existente pelo ID",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @PreAuthorize("hasRole('ADMIN')")
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            @Parameter(description = "ID do usuário") @PathVariable Long id) {
 
-		UserDTO dto = service.findById(id);
-
-		return ResponseEntity.ok().body(dto);
-	}
-
-	
-	@PostMapping
-	public ResponseEntity<UserDTO> insert(@Valid @RequestBody UserInsertDTO dto) {
-		UserDTO newDto = service.insert(dto);
-		URI uri = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(newDto.getId()).toUri();
-		return ResponseEntity.created(uri).body(newDto);
-	}
-
-	@PreAuthorize("hasAnyRole('ROLE_ADMIN')")
-	@PutMapping(value = "/{id}")
-	public ResponseEntity<UserDTO> update(@PathVariable Long id, @Valid @RequestBody UserUpdateDTO dto) {
-		UserDTO newDto = service.update(id, dto);
-		return ResponseEntity.ok(newDto);
-	}
-
-	@PreAuthorize("hasAnyRole('ROLE_ADMIN')")
-	@DeleteMapping(value = "/{id}")
-	public ResponseEntity<UserDTO> delete(@PathVariable Long id) {
-		service.delete(id);
-		return ResponseEntity.noContent().build();
-	}
-
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
 }
