@@ -3,18 +3,18 @@ package com.cwcdev.pix.service;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.cwcdev.pix.exception.ResourceNotFoundException;
 import com.cwcdev.pix.model.ChavePix;
 import com.cwcdev.pix.model.Cliente;
+import com.cwcdev.pix.model.User;
 import com.cwcdev.pix.repository.ChavePixRepository;
 import com.cwcdev.pix.repository.ClienteRepository;
 
@@ -25,114 +25,139 @@ public class ChavePixService {
     private ChavePixRepository repo;
 
     @Autowired
-    private ClienteRepository clienteRepository;
+    private ClienteRepository clienteRepo;
+
+    @Autowired
+    private AuthService authService; // usuário logado via JWT
 
     private static final Pattern EMAIL = Pattern.compile("^[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}$");
     private static final Pattern CPF = Pattern.compile("\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}");
     private static final Pattern CNPJ = Pattern.compile("\\d{2}\\.\\d{3}\\.\\d{3}/\\d{4}-\\d{2}");
     private static final Pattern TELEFONE = Pattern.compile("^\\+?[0-9]{10,13}$");
 
+    // Criar chave pix
     @Transactional
     public ChavePix criar(ChavePix chavePix, Long clienteId) {
-        // associa cliente
-        Cliente cliente = null;
-        if (clienteId != null) {
-            cliente = clienteRepository.findById(clienteId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado para associar chave"));
-        } else if (chavePix.getCliente() != null && chavePix.getCliente().getId() != null) {
-            cliente = clienteRepository.findById(chavePix.getCliente().getId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado para associar chave"));
-        } else {
-            throw new IllegalArgumentException("É necessário informar clienteId ou um cliente existente na chave");
+        User usuarioLogado = authService.authenticated();
+        Cliente cliente = clienteRepo.findById(clienteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado"));
+
+        // verifica permissão: user só pode cadastrar chave para cliente próprio
+        if (!usuarioLogado.hasRole("ROLE_ADMIN") && !cliente.getCreatedBy().equals(usuarioLogado)) {
+            throw new SecurityException("Você não tem permissão para cadastrar chave para este cliente.");
         }
 
         chavePix.setCliente(cliente);
         chavePix.setId(null); // garante insert
-
         validarEPreparar(chavePix);
-
         return repo.save(chavePix);
     }
-    
-    
-    public List<ChavePix> listarTodas() {
-        return repo.findAll();
-    }
 
-
-
+    // Atualizar chave
     @Transactional
     public ChavePix atualizar(Long id, ChavePix dados) {
-        ChavePix existente = repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Chave Pix não encontrada"));
+        ChavePix existente = repo.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Chave Pix não encontrada"));
+        User usuarioLogado = authService.authenticated();
+
+        // valida permissão
+        if (!usuarioLogado.hasRole("ROLE_ADMIN") && !existente.getCliente().getCreatedBy().equals(usuarioLogado)) {
+            throw new SecurityException("Você não tem permissão para atualizar esta chave.");
+        }
+
         existente.setTipo(dados.getTipo());
         existente.setValor(dados.getValor());
-        if (dados.getCliente() != null && dados.getCliente().getId() != null) {
-            Cliente c = clienteRepository.findById(dados.getCliente().getId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado"));
-            existente.setCliente(c);
-        }
         validarEPreparar(existente);
         return repo.save(existente);
     }
 
+    // Buscar por id
     public ChavePix buscarPorId(Long id) {
-        return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Chave Pix não encontrada"));
+        ChavePix chave = repo.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Chave Pix não encontrada"));
+        User usuarioLogado = authService.authenticated();
+        if (!usuarioLogado.hasRole("ROLE_ADMIN") && !chave.getCliente().getCreatedBy().equals(usuarioLogado)) {
+            throw new SecurityException("Você não tem permissão para acessar esta chave.");
+        }
+        return chave;
     }
 
+    // Remover chave
     @Transactional
     public void remover(Long id) {
-        ChavePix existente = buscarPorId(id);
-        repo.delete(existente);
+        ChavePix chave = buscarPorId(id);
+        repo.delete(chave);
     }
 
-    public Page<ChavePix> listarPaginado(int page, int size, String sortBy) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy));
+    // Listagem paginada
+    public Page<ChavePix> listarPaginado(Pageable pageable) {
         return repo.findAllNative(pageable);
+    }
+
+    // Listar todas chaves visíveis para o usuário
+    public List<ChavePix> listarTodas() {
+        User usuarioLogado = authService.authenticated();
+        if (usuarioLogado.hasRole("ROLE_ADMIN")) {
+            return repo.findAll();
+        } else {
+            return repo.findAll().stream()
+                    .filter(c -> c.getCliente().getCreatedBy().equals(usuarioLogado))
+                    .collect(Collectors.toList());
+        }
     }
 
     // Valida tipo, formata/gera valor e checa duplicidade
     private void validarEPreparar(ChavePix chavePix) {
-        if (chavePix.getTipo() == null) throw new IllegalArgumentException("Tipo de chave é obrigatório");
+        if (chavePix.getTipo() == null || chavePix.getTipo().isBlank()) {
+            throw new IllegalArgumentException("Tipo é obrigatório");
+        }
 
         String tipo = chavePix.getTipo().trim().toUpperCase();
         String valor = chavePix.getValor();
+
         switch (tipo) {
             case "EMAIL":
                 if (valor == null || !EMAIL.matcher(valor).matches()) throw new IllegalArgumentException("Email inválido");
+                checarDuplicidade(valor);
                 break;
             case "CPF":
-                if (valor == null || !CPF.matcher(valor).matches()) throw new IllegalArgumentException("CPF inválido. Use formato xxx.xxx.xxx-xx");
+                if (valor == null || !CPF.matcher(valor).matches()) throw new IllegalArgumentException("CPF inválido. Use xxx.xxx.xxx-xx");
+                checarDuplicidade(valor);
                 break;
             case "CNPJ":
-                if (valor == null || !CNPJ.matcher(valor).matches()) throw new IllegalArgumentException("CNPJ inválido. Use formato xx.xxx.xxx/xxxx-xx");
+                if (valor == null || !CNPJ.matcher(valor).matches()) throw new IllegalArgumentException("CNPJ inválido. Use xx.xxx.xxx/xxxx-xx");
+                checarDuplicidade(valor);
                 break;
             case "TELEFONE":
                 if (valor == null || !TELEFONE.matcher(valor).matches()) throw new IllegalArgumentException("Telefone inválido");
+                checarDuplicidade(valor);
                 break;
             case "ALEATORIO":
-                // Cliente precisa ter CPF (ou pode ter CNPJ, mas regra previa usa CPF)
+                // verifica cliente com CPF
                 String cpf = chavePix.getCliente() != null && chavePix.getCliente().getPessoa() != null
                         ? chavePix.getCliente().getPessoa().getCpf()
                         : null;
-                if (cpf == null || cpf.isBlank()) {
-                    throw new IllegalArgumentException("Para chave ALEATORIO é necessário CPF do cliente");
-                }
-                if (repo.existsAleatorioByCpf(cpf)) {
-                    throw new IllegalArgumentException("Cliente com este CPF já possui uma chave ALEATORIO");
-                }
+                if (cpf == null || cpf.isBlank()) throw new IllegalArgumentException("Para chave ALEATORIO é necessário CPF do cliente");
+
+                // verifica se cliente já tem chave ALEATORIO
+                if (repo.existsAleatorioByCpf(cpf)) throw new IllegalArgumentException("Cliente já possui uma chave ALEATORIO");
+
                 // gera UUID único
                 String novo;
                 do {
                     novo = UUID.randomUUID().toString();
                 } while (repo.existsByValor(novo));
                 chavePix.setValor(novo);
-                return; // não precisa checar duplicidade no final (gerado único)
+                break;
             default:
-                throw new IllegalArgumentException("Tipo de chave inválido");
+                throw new IllegalArgumentException("Tipo inválido");
         }
+    }
 
-        // verificar duplicidade global (para todos os tipos exceto ALEATORIO)
-        if (valor == null || valor.isBlank()) throw new IllegalArgumentException("Valor da chave é obrigatório");
-        if (repo.existsByValor(valor)) throw new IllegalArgumentException("Chave já existe");
+    // Verifica duplicidade global
+    private void checarDuplicidade(String valor) {
+        if (repo.existsByValor(valor)) {
+            throw new IllegalArgumentException("Chave já existe");
+        }
     }
 }

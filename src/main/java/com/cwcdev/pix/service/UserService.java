@@ -69,19 +69,28 @@ public class UserService implements UserDetailsService {
 		return new UserDTO(entity);
 	}
 
-	@org.springframework.transaction.annotation.Transactional(readOnly = true)
-	public UserDTO insert(UserInsertDTO dto) {
-		User entity = new User();
-		copyDtoToEntity(dto, entity);
-		
-		entity.getRoles().clear();
-		Role role = rolerepository.findByAuthority("ROLE_OPERATOR");
-		entity.getRoles().add(role);
-		entity.setPassword(passwordEncoder.encode(dto.getPassword()));
-		entity = repository.save((entity));
-		return new UserDTO(entity);
+	 @Transactional // <- precisa ser de escrita
+	    public UserDTO insert(UserInsertDTO dto) {
+	        User entity = new User();
+	        copyDtoToEntity(dto, entity);
 
-	}
+	        // define senha criptografada
+	        entity.setPassword(passwordEncoder.encode(dto.getPassword()));
+
+	        // adiciona role padrão
+	        Role role = rolerepository.findByAuthority("ROLE_USER");
+	        if (role == null) {
+	            throw new IllegalStateException("Role 'ROLE_USER' não encontrada!");
+	        }
+	        entity.getRoles().clear();
+	        entity.getRoles().add(role);
+
+	        // salva
+	        entity = repository.save(entity);
+
+	        return new UserDTO(entity);
+	    }
+
 
 	@Transactional
 	public UserDTO update(Long id, UserUpdateDTO dto) {

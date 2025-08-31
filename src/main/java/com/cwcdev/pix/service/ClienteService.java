@@ -4,16 +4,11 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import com.cwcdev.pix.exception.ResourceNotFoundException;
-import com.cwcdev.pix.model.ChavePix;
 import com.cwcdev.pix.model.Cliente;
-import com.cwcdev.pix.model.Pessoa;
+import com.cwcdev.pix.model.User;
 import com.cwcdev.pix.repository.ClienteRepository;
 
 @Service
@@ -22,47 +17,95 @@ public class ClienteService {
     @Autowired
     private ClienteRepository clienteRepository;
 
-    @Transactional
-    public Cliente criar(Cliente cliente) {
-        // validações simples
-        Pessoa p = cliente.getPessoa();
-        if (p == null) throw new IllegalArgumentException("Pessoa é obrigatória no cliente");
-        if ((p.getCpf() == null || p.getCpf().isBlank()) && (p.getCnpj() == null || p.getCnpj().isBlank()))
-            throw new IllegalArgumentException("CPF ou CNPJ deve ser informado");
+    @Autowired
+    private AuthService authService; // pega o usuário logado via JWT
 
-        // outras validações podem ser adicionadas (formato CPF/CNPJ, tamanho)
-        cliente.setId(null); // garantir insert
+ // Salvar cliente com validação global
+    public Cliente salvar(Cliente cliente) {
+        if (cliente.getPessoa() == null) {
+            throw new IllegalArgumentException("Pessoa é obrigatória.");
+        }
+
+        // Verifica duplicidade global
+        if (clienteRepository.existsByCpf(cliente.getPessoa().getCpf())) {
+            throw new IllegalArgumentException("Cliente com este CPF já existe.");
+        }
+        if (clienteRepository.existsByEmail(cliente.getPessoa().getEmail())) {
+            throw new IllegalArgumentException("Cliente com este email já existe.");
+        }
+
+
+        User usuarioLogado = authService.authenticated();
+        cliente.setCreatedBy(usuarioLogado);
+
         return clienteRepository.save(cliente);
     }
 
-    public Page<Cliente> listarPaginado(int page, int size, String sortBy) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy));
-        return clienteRepository.findAllNative(pageable);
+    // Listar todos clientes paginado
+    public Page<Cliente> listarTodos(Pageable pageable) {
+        User usuarioLogado = authService.authenticated();
+        boolean isAdmin = usuarioLogado.hasRole("ROLE_ADMIN");
+
+        if (isAdmin) {
+            return clienteRepository.findAllNative(pageable);
+        } else {
+            return clienteRepository.findByCreatedByNative(usuarioLogado.getId(), pageable);
+        }
     }
 
-    public List<Cliente> listarTodos() {
-        return clienteRepository.findAll();
+    // Listar todos clientes sem paginação
+    public List<Cliente> listarTodosSemPaginacao() {
+        User usuarioLogado = authService.authenticated();
+        boolean isAdmin = usuarioLogado.hasRole("ROLE_ADMIN");
+
+        if (isAdmin) {
+            return clienteRepository.findAll();
+        } else {
+            return clienteRepository.findByCreatedBy(usuarioLogado);
+        }
     }
 
-
+    // Buscar cliente por ID
     public Cliente buscarPorId(Long id) {
-        return clienteRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado com id: " + id));
+        Cliente cliente = clienteRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Cliente não encontrado"));
+
+        User usuarioLogado = authService.authenticated();
+        boolean isAdmin = usuarioLogado.hasRole("ROLE_ADMIN");
+
+        if (!isAdmin && !cliente.getCreatedBy().equals(usuarioLogado)) {
+            throw new SecurityException("Você não tem permissão para acessar este cliente.");
+        }
+        return cliente;
     }
 
-    @Transactional
-    public Cliente atualizar(Long id, Cliente dados) {
-        Cliente existente = buscarPorId(id);
-        // atualiza somente campos permitidos
-        if (dados.getPessoa() != null) existente.setPessoa(dados.getPessoa());
-        existente.setAgencia(dados.getAgencia());
-        existente.setConta(dados.getConta());
-        existente.setBanco(dados.getBanco());
-        return clienteRepository.save(existente);
+    // Atualizar cliente
+ // Atualizar cliente
+    public Cliente atualizar(Long id, Cliente atualizado) {
+        Cliente cliente = buscarPorId(id);
+
+        // Evitar duplicidade global, ignorando o próprio registro
+        if (clienteRepository.existsByCpf(atualizado.getPessoa().getCpf()) &&
+            !cliente.getPessoa().getCpf().equals(atualizado.getPessoa().getCpf())) {
+            throw new IllegalArgumentException("Outro cliente com este CPF já existe.");
+        }
+        if (clienteRepository.existsByEmail(atualizado.getPessoa().getEmail()) &&
+            !cliente.getPessoa().getEmail().equals(atualizado.getPessoa().getEmail())) {
+            throw new IllegalArgumentException("Outro cliente com este email já existe.");
+        }
+
+        cliente.setPessoa(atualizado.getPessoa());
+        cliente.setAgencia(atualizado.getAgencia());
+        cliente.setConta(atualizado.getConta());
+        cliente.setBanco(atualizado.getBanco());
+
+        return clienteRepository.save(cliente);
     }
 
-    @Transactional
-    public void excluir(Long id) {
-        Cliente existente = buscarPorId(id);
-        clienteRepository.delete(existente);
+
+    // Deletar cliente
+    public void deletar(Long id) {
+        Cliente cliente = buscarPorId(id);
+        clienteRepository.delete(cliente);
     }
 }

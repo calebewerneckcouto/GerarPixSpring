@@ -4,92 +4,70 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
 
-import com.cwcdev.pix.dto.ChavePixDTO;
 import com.cwcdev.pix.model.ChavePix;
-import com.cwcdev.pix.model.Cliente;
 import com.cwcdev.pix.service.ChavePixService;
-import com.cwcdev.pix.service.ClienteService;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/chaves")
-@Tag(name = "Chaves Pix", description = "Gerenciamento de chaves Pix")
+@Tag(name = "ChavesPix", description = "API para gerenciar Chaves Pix")
+@SecurityRequirement(name = "bearerAuth")
 public class ChavePixController {
 
     @Autowired
-    private ChavePixService chaveService;
+    private ChavePixService service;
 
-    @Autowired
-    private ClienteService clienteService;
-
-    @Operation(summary = "Criar chave Pix associada a um cliente existente. Informe clienteId no body.")
-    @PostMapping
-    public ResponseEntity<ChavePix> criar(@Valid @RequestBody ChavePixDTO dto) {
-        ChavePix entidade = new ChavePix();
-        entidade.setTipo(dto.getTipo());
-        entidade.setValor(dto.getValor());
-
-        // associa cliente mínimo para validação geradora de ALEATORIO (pelo service)
-        if (dto.getClienteId() != null) {
-            Cliente c = clienteService.buscarPorId(dto.getClienteId());
-            entidade.setCliente(c);
-        }
-        ChavePix salva = chaveService.criar(entidade, dto.getClienteId());
-        return ResponseEntity.status(201).body(salva);
-    }
-
-    @Operation(summary = "Listar chaves (paginado)")
     @GetMapping
-    public ResponseEntity<Page<ChavePix>> listar(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "id") String sortBy) {
-        return ResponseEntity.ok(chaveService.listarPaginado(page, size, sortBy));
+    @Operation(summary = "Listar todas as chaves (paginado)", description = "Admin vê todas. User só vê suas.")
+    public ResponseEntity<Page<ChavePix>> listar(Pageable pageable) {
+        return ResponseEntity.ok(service.listarPaginado(pageable));
     }
-    
-    @Operation(summary = "Listar todas as chaves (sem paginação)")
+
     @GetMapping("/all")
+    @Operation(summary = "Listar todas as chaves (sem paginação)")
     public ResponseEntity<List<ChavePix>> listarTodas() {
-        return ResponseEntity.ok(chaveService.listarTodas());
+        return ResponseEntity.ok(service.listarTodas());
     }
 
-
-    @Operation(summary = "Buscar chave por id")
     @GetMapping("/{id}")
-    public ResponseEntity<ChavePix> buscar(@PathVariable Long id) {
-        return ResponseEntity.ok(chaveService.buscarPorId(id));
+    @Operation(summary = "Buscar chave por ID")
+    public ResponseEntity<ChavePix> buscarPorId(@PathVariable Long id) {
+        return ResponseEntity.ok(service.buscarPorId(id));
     }
 
-    @Operation(summary = "Atualizar chave")
+    @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN','USER')")
+    @Operation(summary = "Criar nova chave Pix",
+               description = "Admin pode criar para qualquer cliente. User só para clientes próprios.")
+    public ResponseEntity<ChavePix> criar(
+            @Parameter(description = "ID do cliente associado") @RequestParam Long clienteId,
+            @Valid @RequestBody ChavePix chavePix) {
+        ChavePix nova = service.criar(chavePix, clienteId);
+        return ResponseEntity.ok(nova);
+    }
+
     @PutMapping("/{id}")
-    public ResponseEntity<ChavePix> atualizar(@PathVariable Long id, @Valid @RequestBody ChavePixDTO dto) {
-        ChavePix entidade = new ChavePix();
-        entidade.setTipo(dto.getTipo());
-        entidade.setValor(dto.getValor());
-        if (dto.getClienteId() != null) {
-            entidade.setCliente(clienteService.buscarPorId(dto.getClienteId()));
-        }
-        return ResponseEntity.ok(chaveService.atualizar(id, entidade));
+    @PreAuthorize("hasAnyRole('ADMIN','USER')")
+    @Operation(summary = "Atualizar chave Pix")
+    public ResponseEntity<ChavePix> atualizar(@PathVariable Long id, @Valid @RequestBody ChavePix chavePix) {
+        return ResponseEntity.ok(service.atualizar(id, chavePix));
     }
 
-    @Operation(summary = "Remover chave")
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','USER')")
+    @Operation(summary = "Remover chave Pix")
     public ResponseEntity<Void> remover(@PathVariable Long id) {
-        chaveService.remover(id);
+        service.remover(id);
         return ResponseEntity.noContent().build();
     }
 }

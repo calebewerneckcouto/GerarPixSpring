@@ -34,7 +34,7 @@ import jakarta.validation.Valid;
  */
 @RestController
 @RequestMapping("/users")
-@SecurityRequirement(name = "bearerAuth") // Faz o Swagger exibir o campo de token
+@SecurityRequirement(name = "bearer-key") 
 public class UserResource {
 
     @Autowired
@@ -43,7 +43,7 @@ public class UserResource {
     @Operation(
             summary = "Listar usuários (paginado)",
             description = "Retorna uma página de usuários. Necessário ROLE_ADMIN",
-            security = @SecurityRequirement(name = "bearerAuth")
+            security = @SecurityRequirement(name = "bearer-key")
     )
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
@@ -56,7 +56,7 @@ public class UserResource {
     @Operation(
             summary = "Buscar dados do usuário logado",
             description = "Retorna informações do usuário autenticado",
-            security = @SecurityRequirement(name = "bearerAuth")
+            security = @SecurityRequirement(name = "bearer-key")
     )
     @PreAuthorize("hasAnyRole('ADMIN','USER')")
     @GetMapping("/me")
@@ -68,7 +68,7 @@ public class UserResource {
     @Operation(
             summary = "Buscar usuário por ID",
             description = "Retorna informações de um usuário específico pelo ID",
-            security = @SecurityRequirement(name = "bearerAuth")
+            security = @SecurityRequirement(name = "bearer-key")
     )
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/{id}")
@@ -81,7 +81,7 @@ public class UserResource {
     @Operation(
             summary = "Criar usuário",
             description = "Cria um novo usuário e retorna os dados inseridos",
-            security = @SecurityRequirement(name = "bearerAuth")
+            security = @SecurityRequirement(name = "bearer-key")
     )
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
@@ -90,17 +90,20 @@ public class UserResource {
             @Valid @RequestBody UserInsertDTO dto) {
 
         UserDTO newDto = service.insert(dto);
+
         URI uri = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
                 .buildAndExpand(newDto.getId())
                 .toUri();
+
         return ResponseEntity.created(uri).body(newDto);
     }
+
 
     @Operation(
             summary = "Atualizar usuário",
             description = "Atualiza os dados de um usuário existente",
-            security = @SecurityRequirement(name = "bearerAuth")
+            security = @SecurityRequirement(name = "bearer-key")
     )
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
@@ -116,7 +119,7 @@ public class UserResource {
     @Operation(
             summary = "Excluir usuário",
             description = "Exclui um usuário existente pelo ID",
-            security = @SecurityRequirement(name = "bearerAuth")
+            security = @SecurityRequirement(name = "bearer-key")
     )
     @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")

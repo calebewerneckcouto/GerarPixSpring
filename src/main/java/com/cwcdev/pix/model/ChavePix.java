@@ -10,7 +10,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Version;
-import jakarta.validation.constraints.NotBlank;
 
 @Entity
 public class ChavePix {
@@ -19,25 +18,22 @@ public class ChavePix {
     @GeneratedValue(strategy = GenerationType.SEQUENCE) // mais simples para bancos comuns
     private Long id;
 
-    @NotBlank
+    // Obrigatório enviar tipo no JSON
     private String tipo; // CPF, EMAIL, TELEFONE, ALEATORIO
 
-    @NotBlank
+    // Não é obrigatório, será gerado no serviço se ALEATORIO
     private String valor;
 
-    
     @JoinColumn(name = "cliente_id")
     @ManyToOne(cascade = CascadeType.PERSIST)
     private Cliente cliente;
 
-
     @Version
-    private Integer version; // campo para controle de concorrência otimista
+    private Integer version; // controle de concorrência otimista
 
-    public ChavePix() {
-    }
+    public ChavePix() {}
 
-    public ChavePix(Long id, @NotBlank String tipo, @NotBlank String valor, Cliente cliente) {
+    public ChavePix(Long id, String tipo, String valor, Cliente cliente) {
         this.id = id;
         this.tipo = tipo;
         this.valor = valor;
@@ -91,12 +87,8 @@ public class ChavePix {
 
     @Override
     public boolean equals(Object obj) {
-        if (this == obj)
-            return true;
-        if (obj == null)
-            return false;
-        if (getClass() != obj.getClass())
-            return false;
+        if (this == obj) return true;
+        if (obj == null || getClass() != obj.getClass()) return false;
         ChavePix other = (ChavePix) obj;
         return Objects.equals(id, other.id);
     }

@@ -7,6 +7,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
 
 @Entity
@@ -23,23 +25,32 @@ public class Cliente {
     private String conta;
     private String banco;
     
+    @ManyToOne
+    @JoinColumn(name = "user_id")
+    private User createdBy;
     
     
-    
-    public Cliente(Long id, Pessoa pessoa, String agencia, String conta, String banco) {
-		super();
-		this.id = id;
-		this.pessoa = pessoa;
-		this.agencia = agencia;
-		this.conta = conta;
-		this.banco = banco;
-	}
-
+    public Cliente(Long id, Pessoa pessoa, String agencia, String conta, String banco, User createdBy) {
+        this.id = id;
+        this.pessoa = pessoa;
+        this.agencia = agencia;
+        this.conta = conta;
+        this.banco = banco;
+        this.createdBy = createdBy;
+    }
 
 	public Cliente() {
 		
 	}
 
+
+	public User getCreatedBy() {
+		return createdBy;
+	}
+
+	public void setCreatedBy(User createdBy) {
+		this.createdBy = createdBy;
+	}
 
 	public Long getId() {
 		return id;
